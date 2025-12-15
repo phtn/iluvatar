@@ -1,0 +1,263 @@
+---
+
+# **LLM AGENT INSTRUCTION PLAN**
+
+### **Game System: Material Collection, Crafting, and Coherent Worldbuilding**
+
+---
+
+## **1. Objective**
+
+The agent must design, extend, or evaluate a game system where players collect materials from a coherent world and craft tools, components, and items that align with each biome’s identity, cultural logic, and material lifecycle.
+
+---
+
+## **2. Core Responsibilities for the Agent**
+
+### **2.1. Maintain World Coherence**
+
+The agent must ensure:
+
+* Materials reflect the biome they come from.
+* Tools and items visually or logically match their ingredients.
+* Lore and mechanics follow consistent internal rules.
+* No random, thematically unrelated materials or items are introduced.
+
+### **2.2. Produce Structured Output**
+
+For every requested expansion, the agent must create output in structured, clear sections:
+
+* Biomes
+* Materials
+* Material properties
+* Tools
+* Crafting stations
+* Item recipes
+* Progression tiers
+* Player loops
+* Optional lore
+* Optional quest or narrative hooks
+
+### **2.3. Respect Material Lifecycle**
+
+All materials must be described within the following lifecycle:
+
+1. Raw
+2. Refined
+3. Formed
+4. Component
+5. Final Item
+
+When listing items or recipes, the agent must indicate which stage each material belongs to.
+
+---
+
+## **3. World Logic Pillars**
+
+The agent must base the game’s logic on three pillars.
+
+### **3.1. Biome Logic**
+
+Each biome supplies a consistent set of materials.
+Biomes should include (but are not limited to):
+
+* Forest biome
+* Mountain biome
+* Desert biome
+* Wetlands biome
+* Subterranean biome
+* Ruin/ancient-tech biome
+* Arcane/mystical biome (if applicable)
+
+Each biome must have:
+
+* At least 4–8 materials
+* Distinct visual identity
+* Distinct material families
+
+### **3.2. Cultural Logic**
+
+NPC factions influence crafting style.
+Include:
+
+* Building motifs
+* Preferred materials
+* Known techniques
+* Local specializations
+* Tools or recipes unique to the culture
+
+### **3.3. Material Logic**
+
+The agent must categorize all materials under:
+
+* Organic fibers
+* Woods
+* Stones and minerals
+* Metals and alloys
+* Exotic/arcane materials (if allowed)
+* Synthetic or refined composites
+
+Each material must have:
+
+* At least two gameplay uses
+* Strengths and weaknesses
+* Environmental interactions
+
+---
+
+## **4. Crafting System Requirements**
+
+### **4.1. Crafting Tiers**
+
+All crafting and tool creation must follow tiers:
+
+1. **Tier 0: Handcraft**
+2. **Tier 1: Basic Tools**
+3. **Tier 2: Metallurgy**
+4. **Tier 3: Advanced / Precision / Arcane**
+5. **Tier 4: Civilization-grade Mastercraft**
+
+The agent must describe new items using this tier system.
+
+### **4.2. Crafting Categories**
+
+The agent must support the following item categories:
+
+* Survival tools
+* Gathering tools
+* Structures
+* Weapons (if applicable)
+* Clothing/armor
+* Vehicles or mounts
+* Automation or magitech devices (optional)
+
+### **4.3. Components System**
+
+All items must be built from components, not directly from raw materials. Components include:
+
+* Bindings
+* Frames
+* Cores
+* Surfaces
+* Fasteners
+* Mechanisms
+* Conduits
+
+---
+
+## **5. Gameplay Loop Requirements**
+
+The agent must present systems in a clear recurring loop:
+
+**1. Discover a biome**
+**2. Identify collectible materials**
+**3. Harvest (requires proper tool tier)**
+**4. Refine at appropriate station**
+**5. Craft components**
+**6. Combine components into final items**
+**7. Unlock higher tiers**
+**8. Expand into new biomes**
+
+The agent must emphasize player progression through learning ecosystems.
+
+---
+
+## **6. Optional Systems the Agent Can Generate on Request**
+
+When the user asks, the agent may generate:
+
+### **6.1. Complete tech tree**
+
+### **6.2. 100+ itemized materials with descriptions**
+
+### **6.3. Story/backdrop for world origin**
+
+### **6.4. Factions and cultural identities**
+
+### **6.5. Hour 1, Day 1, Week 1 player progression**
+
+### **6.6. Full crafting vocab and naming conventions**
+
+### **6.7. Economy and rarity grading for materials**
+
+### **6.8. Quests that introduce the crafting systems**
+
+### **6.9. Blueprint-style crafting recipes**
+
+---
+
+## **7. Output Formatting Rules**
+
+### **7.1. Structure**
+
+Use clear section headings:
+
+* Title
+* Overview
+* Sections
+* Subsections
+* Lists
+
+### **7.2. No contradictions**
+
+All biomes, materials, stations, and tools must remain internally consistent.
+
+### **7.3. When inventing new items**
+
+The agent must include:
+
+* Name
+* Tier
+* Components
+* Required materials
+* Biome origin
+* Description
+* Gameplay function
+
+### **7.4. When creating biomes**
+
+The agent must include:
+
+* Climate
+* Material list
+* Creature interactions (if applicable)
+* Environmental hazards
+* Unique crafting opportunities
+
+---
+
+## **8. Example Request Types the Agent Must Handle**
+
+* “Generate 3 new biomes.”
+* “Give me a full tech tree.”
+* “List 20 new materials with use cases.”
+* “Create 5 tools from volcanic materials only.”
+* “Design the crafting progression for early game.”
+* “Write the lore behind the alloy system.”
+* “Create 10 example recipes for Tier 3 crafting.”
+
+---
+
+## **9. Constraints**
+
+* Maintain thematic coherence.
+* Avoid introducing sci-fi elements into a fantasy world unless explicitly permitted, and vice versa.
+* Keep names pronounceable unless the user asks for alien language construction.
+* Always describe ingredients before describing items.
+* Always place biomes before factions or cultures unless user asks otherwise.
+
+---
+
+## **10. Primary Goal of the Agent**
+
+Create a believable, vivid, mechanically rich crafting and material-collection ecosystem where every building block (biomes, materials, components, tools, and items) fits together logically, supports player progression, and feels like it naturally belongs in the world.
+
+
+## **11. Database**
+
+We will be using convex for the database.
+Create the context provider for convex.
+
+Once you're done with reviewing the plan and materials listed, you may start creating the convex schema for all tables we will be needing.
+
+---

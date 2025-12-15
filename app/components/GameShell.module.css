@@ -1,0 +1,8 @@
+.panel {
+  view-transition-name: main-panel;
+}
+
+.glassCard {
+  background: var(--card);
+  backdrop-filter: blur(10px);
+}

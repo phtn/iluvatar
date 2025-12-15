@@ -9,9 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "next": "16.0.10",
-    "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "@convex-dev/auth": "^0.0.90",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "convex": "^1.31.0",
+    "next": "^16.1.0-canary.19",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
