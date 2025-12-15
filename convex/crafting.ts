@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { ensureCraftingDefaults } from "./craftingDefaults";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
@@ -208,6 +209,54 @@ export const listMyRecipes = query({
     return {
       player: { _id: player._id, name: player.name, craftingTier: player.craftingTier },
       recipes,
+    };
+  },
+});
+
+export const ensureDefaults = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+
+    const now = Date.now();
+    const result = await ensureCraftingDefaults(ctx);
+
+    // Also bootstrap existing players so they can always access Campfire crafting.
+    // This is intentionally conservative: we only ensure the minimal starter unlocks.
+    const player = await ctx.db
+      .query("players")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (!player) return { seeded: true as const, ...result, bootstrapped: false as const };
+
+    const ensureUnlock = async (kind: "station" | "recipe", defId: string): Promise<boolean> => {
+      const existing = await ctx.db
+        .query("playerUnlocks")
+        .withIndex("by_player_kind_defId", (q) =>
+          q.eq("playerId", player._id).eq("kind", kind).eq("defId", defId),
+        )
+        .first();
+      if (existing) return false;
+      await ctx.db.insert("playerUnlocks", {
+        playerId: player._id,
+        kind,
+        defId,
+        unlockedTime: now,
+      });
+      return true;
+    };
+
+    const added: string[] = [];
+    if (await ensureUnlock("station", "campfire")) added.push("station:campfire");
+    if (await ensureUnlock("recipe", "twist_fiber_cord")) added.push("recipe:twist_fiber_cord");
+    if (await ensureUnlock("recipe", "make_bark_tinder")) added.push("recipe:make_bark_tinder");
+
+    return {
+      seeded: true as const,
+      ...result,
+      bootstrapped: true as const,
+      added,
     };
   },
 });

@@ -13,6 +13,18 @@ type WorldSurfaceProps = Readonly<{
 
 type MoveKey = 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD'
 
+type DevLootSourceId = 'fallen_branch' | 'boulder' | 'abandoned_crate' | 'lore_cache' | 'workbench_blueprint_cache'
+
+type DevGrant = Readonly<{
+  label: string
+  item: Readonly<{
+    kind: 'material' | 'component' | 'item' | 'currency'
+    defId: string
+    stage?: 'raw' | 'refined' | 'formed' | 'component' | 'finalItem'
+  }>
+  defaultQty: number
+}>
+
 function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
@@ -72,6 +84,52 @@ export function WorldSurface(props: WorldSurfaceProps) {
   const [selectedStationDocId, setSelectedStationDocId] = useState<Id<'worldStations'> | null>(null)
   const [placingWorkbench, setPlacingWorkbench] = useState(false)
   const activeStationStorageKey = 'iluvatar:activeStationId'
+  const mapRef = useRef<HTMLDivElement | null>(null)
+
+  const [travelTarget, setTravelTarget] = useState<Readonly<{ x: number; y: number }> | null>(null)
+  const travelTargetRef = useRef<Readonly<{ x: number; y: number }> | null>(null)
+
+  const isDev = process.env.NODE_ENV !== 'production'
+  const devLootSources = useMemo(
+    () =>
+      [
+        { id: 'fallen_branch', label: 'Fallen branch' },
+        { id: 'boulder', label: 'Boulder' },
+        { id: 'abandoned_crate', label: 'Abandoned crate' },
+        { id: 'lore_cache', label: 'Lore cache' },
+        { id: 'workbench_blueprint_cache', label: 'Workbench blueprint cache' }
+      ] as const satisfies readonly Readonly<{ id: DevLootSourceId; label: string }>[],
+    []
+  )
+
+  const devGrants = useMemo(
+    () =>
+      [
+        {
+          label: 'Fibrous wood strips (raw)',
+          item: { kind: 'material', defId: 'fibrous_wood_strips', stage: 'raw' },
+          defaultQty: 20
+        },
+        {
+          label: 'Bark shavings (raw)',
+          item: { kind: 'material', defId: 'bark_shavings', stage: 'raw' },
+          defaultQty: 20
+        },
+        { label: 'Resin node (raw)', item: { kind: 'material', defId: 'resin_node', stage: 'raw' }, defaultQty: 10 },
+        { label: 'Scrap wood (raw)', item: { kind: 'material', defId: 'scrap_wood', stage: 'raw' }, defaultQty: 20 },
+        { label: 'Rusted nails (component)', item: { kind: 'component', defId: 'rusted_nails' }, defaultQty: 10 },
+        { label: 'Fiber cord (component)', item: { kind: 'component', defId: 'fiber_cord' }, defaultQty: 10 },
+        { label: 'Bark tinder (component)', item: { kind: 'component', defId: 'bark_tinder' }, defaultQty: 10 },
+        { label: 'Resin sealant (component)', item: { kind: 'component', defId: 'resin_sealant' }, defaultQty: 10 },
+        { label: 'Wooden shaft (component)', item: { kind: 'component', defId: 'wooden_shaft' }, defaultQty: 10 },
+        { label: 'Crude torch (item)', item: { kind: 'item', defId: 'crude_torch' }, defaultQty: 3 }
+      ] as const satisfies readonly DevGrant[],
+    []
+  )
+
+  const [devSelectedLootSource, setDevSelectedLootSource] = useState<DevLootSourceId>('fallen_branch')
+  const [devSelectedGrantIdx, setDevSelectedGrantIdx] = useState(0)
+  const [devQty, setDevQty] = useState<number>(() => devGrants[0]?.defaultQty ?? 1)
 
   const myPlayer = useQuery(api.players.getMyPlayer, {})
   const players = useQuery(api.players.listPlayersByBiome, auth.isAuthenticated ? { biomeId } : 'skip')
@@ -85,10 +143,16 @@ export function WorldSurface(props: WorldSurfaceProps) {
   const createPlayer = useMutation(api.players.createPlayer)
   const moveMyPlayer = useMutation(api.players.moveMyPlayer)
   const touchMyPlayer = useMutation(api.players.touchMyPlayer)
+  const ensureBiomeSeed = useMutation(api.world.ensureBiomeSeed)
   const spawnLootNode = useMutation(api.world.spawnLootNode)
   const harvestLootNode = useMutation(api.world.harvestLootNode)
   const placeMyWorkbench = useMutation(api.stations.placeMyWorkbench)
   const spawnStation = useMutation(api.stations.spawnStation)
+  const grantItems = useMutation(api.inventory.grantItems)
+
+  useEffect(() => {
+    travelTargetRef.current = travelTarget
+  }, [travelTarget])
 
   useEffect(() => {
     if (auth.isLoading) return
@@ -116,6 +180,23 @@ export function WorldSurface(props: WorldSurfaceProps) {
     }, 20_000)
     return () => window.clearInterval(interval)
   }, [auth.isAuthenticated, myPlayer, touchMyPlayer])
+
+  const [didEnsureBiomeSeed, setDidEnsureBiomeSeed] = useState(false)
+  useEffect(() => {
+    if (!auth.isAuthenticated) return
+    if (!myPlayer) return
+    if (didEnsureBiomeSeed) return
+    if (!lootNodes) return
+    if (lootNodes.length !== 0) {
+      setDidEnsureBiomeSeed(true)
+      return
+    }
+
+    setDidEnsureBiomeSeed(true)
+    void ensureBiomeSeed({}).catch(() => {
+      // If seeding fails, the UI still works; the world will just be empty.
+    })
+  }, [auth.isAuthenticated, didEnsureBiomeSeed, ensureBiomeSeed, lootNodes, myPlayer])
 
   const stage = useMemo(() => {
     if (auth.isLoading) return 'booting'
@@ -153,9 +234,7 @@ export function WorldSurface(props: WorldSurfaceProps) {
     [moveMyPlayer]
   )
 
-  async function onSpawn(
-    sourceId: 'fallen_branch' | 'boulder' | 'abandoned_crate' | 'lore_cache' | 'workbench_blueprint_cache'
-  ) {
+  async function onSpawn(sourceId: DevLootSourceId) {
     if (!myPlayer) return
     setError(null)
     setLastLoot(null)
@@ -168,6 +247,27 @@ export function WorldSurface(props: WorldSurfaceProps) {
       await spawnLootNode({ biomeId, lootSourceId: sourceId, position: { x, y } })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to spawn node')
+    }
+  }
+
+  async function onGrant() {
+    if (!myPlayer) return
+    const picked = devGrants[devSelectedGrantIdx]
+    if (!picked) return
+    const qty = Math.floor(devQty)
+    if (qty <= 0) return
+
+    setError(null)
+    setLastLoot(null)
+    withViewTransition(() => startTransition(() => {}))
+    try {
+      await grantItems({
+        playerId: myPlayer._id,
+        items: [{ ...picked.item, qty }]
+      })
+      setLastLoot(`Granted: ${qty}× ${picked.item.defId.replaceAll('_', ' ')}`)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to grant items')
     }
   }
 
@@ -199,11 +299,12 @@ export function WorldSurface(props: WorldSurfaceProps) {
     KeyD: false
   })
   const moveInFlightRef = useRef(false)
+  const myPlayerRef = useRef<typeof myPlayer>(null)
+  useEffect(() => {
+    myPlayerRef.current = myPlayer
+  }, [myPlayer])
 
   useEffect(() => {
-    if (stage !== 'in-world') return
-    if (!myPlayer) return
-
     const keysDown = keysDownRef.current
 
     function onKeyChange(e: KeyboardEvent, isDown: boolean) {
@@ -215,6 +316,9 @@ export function WorldSurface(props: WorldSurfaceProps) {
       e.preventDefault()
 
       keysDown[e.code] = isDown
+      if (isDown && travelTargetRef.current) {
+        withViewTransition(() => startTransition(() => setTravelTarget(null)))
+      }
     }
 
     const onKeyDown = (e: KeyboardEvent) => onKeyChange(e, true)
@@ -223,16 +327,38 @@ export function WorldSurface(props: WorldSurfaceProps) {
     window.addEventListener('keydown', onKeyDown, { passive: false })
     window.addEventListener('keyup', onKeyUp, { passive: false })
 
-    const step = 1
-    const tickMs = 110
+    const step = 6
+    const tickMs = 100
+    const epsilon = 0.25
     const interval = window.setInterval(() => {
-      const dx = (keysDown.KeyD ? step : 0) + (keysDown.KeyA ? -step : 0)
-      const dy = (keysDown.KeyS ? step : 0) + (keysDown.KeyW ? -step : 0)
-      if (dx === 0 && dy === 0) return
+      const p = myPlayerRef.current
+      if (!p) return
+      if (!auth.isAuthenticated) return
+      if (stage !== 'in-world') return
       if (moveInFlightRef.current) return
 
+      const target = travelTargetRef.current
+
+      const intent = (() => {
+        if (target) {
+          const dpx = target.x - p.position.x
+          const dpy = target.y - p.position.y
+          if (Math.abs(dpx) <= epsilon && Math.abs(dpy) <= epsilon) {
+            withViewTransition(() => startTransition(() => setTravelTarget(null)))
+            return { dx: 0, dy: 0 }
+          }
+          const ix = Math.abs(dpx) <= step ? dpx : Math.sign(dpx) * step
+          const iy = Math.abs(dpy) <= step ? dpy : Math.sign(dpy) * step
+          return { dx: ix, dy: iy }
+        }
+        const kx = (keysDown.KeyD ? step : 0) + (keysDown.KeyA ? -step : 0)
+        const ky = (keysDown.KeyS ? step : 0) + (keysDown.KeyW ? -step : 0)
+        return { dx: kx, dy: ky }
+      })()
+
+      if (intent.dx === 0 && intent.dy === 0) return
       moveInFlightRef.current = true
-      void onMove(dx, dy).finally(() => {
+      void onMove(intent.dx, intent.dy).finally(() => {
         moveInFlightRef.current = false
       })
     }, tickMs)
@@ -246,14 +372,13 @@ export function WorldSurface(props: WorldSurfaceProps) {
       keysDown.KeyS = false
       keysDown.KeyD = false
     }
-  }, [myPlayer, onMove, stage])
+  }, [auth.isAuthenticated, onMove, stage])
 
   const onlineCount = players ? players.length : 0
   const meId = myPlayer?._id
   const mapPlayers = players ?? []
   const mapLootNodes = lootNodes ?? []
   const mapStations = useMemo(() => worldStations ?? [], [worldStations])
-  const isDev = process.env.NODE_ENV !== 'production'
 
   const hasWorkbenchUnlocked = useMemo(() => {
     const xs = myStations?.stations ?? []
@@ -303,16 +428,35 @@ export function WorldSurface(props: WorldSurfaceProps) {
     }
   }
 
+  function onMapPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    if (e.target !== e.currentTarget) return
+    if (!myPlayer) return
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+
+    const nx = clamp01((e.clientX - rect.left) / rect.width)
+    const ny = clamp01((e.clientY - rect.top) / rect.height)
+    const x = Math.round(nx * 100)
+    const y = Math.round(ny * 100)
+    const next = { x, y } as const
+
+    withViewTransition(() => {
+      startTransition(() => {
+        setTravelTarget(next)
+        setLastLoot(`Traveling to (${x},${y})`)
+      })
+    })
+  }
+
   return (
-    <div className='grid gap-4'>
-      <div className='flex flex-wrap items-start justify-between gap-3'>
+    <div className='grid'>
+      <div className='flex p-4 border-b border-white/20 flex-wrap items-start justify-between'>
         <div className='min-w-0'>
           <div className='text-sm font-semibold tracking-tight'>Forest Surface</div>
-          <div className='mt-0.5 text-xs text-black/55 dark:text-white/55'>
-            {stage === 'in-world' ? 'You are in-world (anonymous session).' : 'Anonymous players can join instantly.'}
-          </div>
         </div>
-        <div className='flex items-center gap-2 text-xs text-black/60 dark:text-white/60'>
+        <div className='flex items-center text-xs text-black/60 dark:text-white/60'>
           <span className={cx('inline-block h-2 w-2 rounded-full', pending ? 'bg-amber-500' : 'bg-emerald-500')} />
           <span>{pending ? 'Activity' : 'Live'}</span>
           <span className='mx-1 opacity-40'>•</span>
@@ -341,7 +485,7 @@ export function WorldSurface(props: WorldSurfaceProps) {
       ) : null}
 
       {stage === 'needs-player' ? (
-        <div className='grid gap-3 rounded-2xl border border-black/10 bg-black/3 p-5 dark:border-white/10 dark:bg-white/4'>
+        <div className='grid border border-black/10 bg-blue-200 dark:border-white/60 dark:bg-white/4'>
           <div>
             <div className='text-sm font-semibold'>Join the world</div>
             <div className='mt-0.5 text-xs text-black/55 dark:text-white/55'>
@@ -374,11 +518,11 @@ export function WorldSurface(props: WorldSurfaceProps) {
       ) : null}
 
       {stage === 'in-world' && myPlayer ? (
-        <div className='grid gap-4 lg:grid-cols-3'>
+        <div className='grid lg:grid-cols-8'>
           {/* Map */}
-          <div className='lg:col-span-2'>
-            <div className='rounded-2xl border border-black/10 bg-black/3 p-4 dark:border-white/10 dark:bg-white/4'>
-              <div className='flex items-center justify-between gap-3'>
+          <div className='lg:col-span-7'>
+            <div className='dark:bg-white/4'>
+              <div className='flex items-center'>
                 <div className='min-w-0'>
                   <div className='mt-0.5 text-xs text-black/55 dark:text-white/55'>
                     <span className='font-bold'>{myPlayer.name}</span> • [
@@ -388,39 +532,63 @@ export function WorldSurface(props: WorldSurfaceProps) {
                     ]
                   </div>
                 </div>
-                <div className='flex items-center gap-2'>
+                <div className='flex items-center'>
                   {isDev ? (
                     <>
-                      <button
-                        type='button'
-                        onClick={() => void onSpawn('fallen_branch')}
-                        className='hidden h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6 sm:inline-flex'>
-                        Spawn branch
-                      </button>
-                      <button
-                        type='button'
-                        onClick={() => void onSpawn('boulder')}
-                        className='hidden h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6 sm:inline-flex'>
-                        Spawn boulder
-                      </button>
-                      <button
-                        type='button'
-                        onClick={() => void onSpawn('abandoned_crate')}
-                        className='hidden h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6 sm:inline-flex'>
-                        Spawn crate
-                      </button>
-                      <button
-                        type='button'
-                        onClick={() => void onSpawn('lore_cache')}
-                        className='hidden h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6 sm:inline-flex'>
-                        Spawn cache
-                      </button>
-                      <button
-                        type='button'
-                        onClick={() => void onSpawn('workbench_blueprint_cache')}
-                        className='hidden h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6 sm:inline-flex'>
-                        Spawn workbench cache
-                      </button>
+                      <div className='hidden items-center gap-2 sm:flex'>
+                        <select
+                          className='h-10 rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black shadow-sm outline-none ring-0 transition dark:border-white/10 dark:bg-black dark:text-white'
+                          value={devSelectedLootSource}
+                          onChange={(e) => setDevSelectedLootSource(e.target.value as DevLootSourceId)}
+                          aria-label='Dev: loot source'>
+                          {devLootSources.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              Spawn: {s.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type='button'
+                          onClick={() => void onSpawn(devSelectedLootSource)}
+                          className='h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6'>
+                          Spawn
+                        </button>
+
+                        <select
+                          className='h-10 rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black shadow-sm outline-none ring-0 transition dark:border-white/10 dark:bg-black dark:text-white'
+                          value={String(devSelectedGrantIdx)}
+                          onChange={(e) => {
+                            const idx = Number(e.target.value)
+                            if (!Number.isFinite(idx)) return
+                            setDevSelectedGrantIdx(idx)
+                            const nextDefault = devGrants[idx]?.defaultQty ?? 1
+                            setDevQty(nextDefault)
+                          }}
+                          aria-label='Dev: grant item'>
+                          {devGrants.map((g, idx) => (
+                            <option key={g.item.defId} value={String(idx)}>
+                              Grant: {g.label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className='h-10 w-12 rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black shadow-sm outline-none ring-0 transition dark:border-white/10 dark:bg-black dark:text-white'
+                          inputMode='numeric'
+                          value={String(devQty)}
+                          onChange={(e) => {
+                            const n = Number(e.target.value)
+                            if (!Number.isFinite(n)) return
+                            setDevQty(n)
+                          }}
+                          aria-label='Dev: grant quantity'
+                        />
+                        <button
+                          type='button'
+                          onClick={() => void onGrant()}
+                          className='h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-medium text-black transition hover:bg-black/3 dark:border-white/10 dark:bg-black dark:text-white dark:hover:bg-white/6'>
+                          Grant
+                        </button>
+                      </div>
                       <button
                         type='button'
                         onClick={() => {
@@ -441,7 +609,7 @@ export function WorldSurface(props: WorldSurfaceProps) {
                       type='button'
                       onClick={() => void onPlaceWorkbench()}
                       disabled={placingWorkbench || pending}
-                      className='hidden h-10 items-center justify-center rounded-xl bg-black px-3 text-xs font-medium text-white transition hover:bg-black/90 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-white/90 sm:inline-flex'>
+                      className='hidden h-10 items-center justify-center bg-black px-3 text-xs font-medium text-white transition hover:bg-black/90 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-white/90 sm:inline-flex'>
                       {placingWorkbench ? 'Placing…' : 'Place workbench'}
                     </button>
                   ) : null}
@@ -478,8 +646,11 @@ export function WorldSurface(props: WorldSurfaceProps) {
                 </div>
               </div>
 
-              <div className='mt-4'>
-                <div className='relative h-85 w-full overflow-hidden rounded-xl border border-black/10 bg-linear-to-b from-emerald-200/40 to-emerald-200/10 dark:border-white/10 dark:from-emerald-400/10 dark:to-emerald-400/0'>
+              <div className=''>
+                <div
+                  ref={mapRef}
+                  onPointerDown={onMapPointerDown}
+                  className='relative h-180 w-full overflow-hidden bg-linear-to-b from-emerald-200/40 to-emerald-200/10 dark:border-white/10 dark:from-emerald-400/10 dark:to-emerald-400/0'>
                   {/* faint grid */}
                   <div
                     className='absolute inset-0 opacity-40'
@@ -537,7 +708,9 @@ export function WorldSurface(props: WorldSurfaceProps) {
                         key={s._id}
                         type='button'
                         onClick={() =>
-                          withViewTransition(() => startTransition(() => setSelectedStationDocId((v) => (v === s._id ? null : s._id))))
+                          withViewTransition(() =>
+                            startTransition(() => setSelectedStationDocId((v) => (v === s._id ? null : s._id)))
+                          )
                         }
                         className={cx(
                           'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-sm transition',
@@ -586,7 +759,7 @@ export function WorldSurface(props: WorldSurfaceProps) {
                 </div>
 
                 <Activity mode={selectedStation ? 'visible' : 'hidden'}>
-                  <div className='mt-3 rounded-2xl border border-black/10 bg-black/3 p-4 text-sm text-black/80 dark:border-white/10 dark:bg-white/4 dark:text-white/80'>
+                  <div className='p-4 text-sm text-black/80 dark:border-white/10 dark:bg-white/4 dark:text-white/80'>
                     <div className='flex items-start justify-between gap-3'>
                       <div className='min-w-0'>
                         <div className='text-sm font-semibold'>{selectedStationLabel ?? ''}</div>
@@ -644,14 +817,14 @@ export function WorldSurface(props: WorldSurfaceProps) {
           </div>
 
           {/* Roster */}
-          <div className='rounded-2xl border border-black/10 bg-black/3 p-4 dark:border-white/10 dark:bg-white/4'>
-            <div className='flex items-center justify-between'>
-              <div className='text-sm font-semibold'>Players</div>
+          <div className='dark:bg-white/4'>
+            <div className='flex items-center justify-between h-10 px-2'>
+              <div className='flex items-center text-sm font-semibold'>Players</div>
               <div className='text-xs text-black/55 dark:text-white/55'>{onlineCount} online</div>
             </div>
-            <div className='mt-3 grid gap-2'>
+            <div className='grid'>
               {mapPlayers.length === 0 ? (
-                <div className='rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-black/70 dark:border-white/10 dark:bg-black dark:text-white/70'>
+                <div className='bg-white px-4 py-3 text-sm text-black/70 dark:border-white/10 dark:bg-black dark:text-white/70'>
                   No players online.
                 </div>
               ) : (

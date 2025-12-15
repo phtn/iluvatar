@@ -25,14 +25,17 @@ export function CraftingPanel(props: CraftingPanelProps) {
   const [submittingRecipeId, setSubmittingRecipeId] = useState<string | null>(null)
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null)
   const activeStationStorageKey = 'iluvatar:activeStationId'
+  const [didEnsureDefaults, setDidEnsureDefaults] = useState(false)
 
   const myPlayer = useQuery(api.players.getMyPlayer, {})
   const recipesRes = useQuery(api.crafting.listMyRecipes, auth.isAuthenticated ? {} : 'skip')
   const stationsRes = useQuery(api.crafting.listMyStations, auth.isAuthenticated ? {} : 'skip')
   const queueRes = useQuery(api.crafting.listMyQueue, auth.isAuthenticated ? {} : 'skip')
+  const stacks = useQuery(api.inventory.listInventory, auth.isAuthenticated && myPlayer ? { playerId: myPlayer._id } : 'skip')
 
   const startMyCraft = useMutation(api.crafting.startMyCraft)
   const claimMyCompletedCrafts = useMutation(api.crafting.claimMyCompletedCrafts)
+  const ensureDefaults = useMutation(api.crafting.ensureDefaults)
 
   useEffect(() => {
     if (!auth.isAuthenticated) return
@@ -46,6 +49,27 @@ export function CraftingPanel(props: CraftingPanelProps) {
 
     return () => window.clearInterval(interval)
   }, [auth.isAuthenticated, claimMyCompletedCrafts, myPlayer])
+
+  useEffect(() => {
+    if (!auth.isAuthenticated) return
+    if (!myPlayer) return
+    if (didEnsureDefaults) return
+    if (!recipesRes) return
+    if (recipesRes.recipes.length !== 0) return
+
+    setDidEnsureDefaults(true)
+    startUiTransition(() => {
+      setError(null)
+      setToast('Initializing crafting data…')
+    })
+    void ensureDefaults({})
+      .then(() => {
+        startUiTransition(() => setToast('Crafting data initialized.'))
+      })
+      .catch((e: unknown) => {
+        startUiTransition(() => setError(e instanceof Error ? e.message : 'Failed to initialize crafting data'))
+      })
+  }, [auth.isAuthenticated, didEnsureDefaults, ensureDefaults, myPlayer, recipesRes, startUiTransition])
 
   const unlockedStations = useMemo(() => {
     const xs = stationsRes?.stations ?? []
@@ -69,6 +93,44 @@ export function CraftingPanel(props: CraftingPanelProps) {
   const stationId = selectedStationId ?? 'campfire'
   const stationLabel =
     (stationsRes?.stations ?? []).find((s) => s.id === stationId)?.label ?? stationId.replaceAll('_', ' ')
+
+  const qtyByKey = useMemo(() => {
+    const xs = stacks ?? []
+    const out: Record<string, number> = {}
+    for (const s of xs) out[`${s.kind}:${s.defId}`] = s.qty
+    return out
+  }, [stacks])
+
+  const tier1Checklist = useMemo(() => {
+    if (!myPlayer) return null
+    const tier = recipesRes?.player?.craftingTier ?? myPlayer.craftingTier
+    if (tier >= 1) return null
+    const torchRecipe = recipesRes?.recipes.find((r) => r.id === 'craft_crude_torch') ?? null
+    const hasTorchRecipe = torchRecipe?.unlocked ?? false
+
+    const have = (kind: 'material' | 'component' | 'item' | 'currency', defId: string) => qtyByKey[`${kind}:${defId}`] ?? 0
+    const needs = (kind: 'material' | 'component' | 'item' | 'currency', defId: string, qty: number) => ({
+      kind,
+      defId,
+      need: qty,
+      have: have(kind, defId)
+    })
+
+    // This is the current hard-coded Tier 1 milestone in Convex:
+    // claim a craft job that outputs crude_torch.
+    return {
+      tier,
+      hasTorchRecipe,
+      materials: [
+        needs('material', 'fibrous_wood_strips', 2),
+        needs('material', 'bark_shavings', 3),
+        // optional but commonly needed soon after:
+        needs('material', 'resin_node', 1)
+      ],
+      components: [needs('component', 'fiber_cord', 1), needs('component', 'bark_tinder', 1)],
+      torch: needs('item', 'crude_torch', 1)
+    }
+  }, [myPlayer, qtyByKey, recipesRes])
 
   const recipesForStation = useMemo(() => {
     if (!recipesRes) return []
@@ -176,6 +238,48 @@ export function CraftingPanel(props: CraftingPanelProps) {
         </div>
       ) : null}
 
+      <Activity mode={tier1Checklist ? 'visible' : 'hidden'}>
+        <div className='rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100'>
+          <div className='font-semibold'>Unlock Tier 1</div>
+          <div className='mt-1 text-xs opacity-80'>
+            Tier 1 is granted when you <span className='font-medium'>craft and claim</span> a <span className='font-medium'>crude torch</span>.
+          </div>
+
+          <div className='mt-3 grid gap-2 text-xs'>
+            <div>
+              <span className='font-medium'>Step 1:</span> Unlock the torch recipe via <span className='font-medium'>Lore Cache</span> (harvest
+              <span className='font-mono'> lore_cache</span> in World).{' '}
+              <span className='opacity-80'>{tier1Checklist?.hasTorchRecipe ? '(unlocked)' : '(locked)'}</span>
+            </div>
+
+            <div className='grid gap-1'>
+              <div className='font-medium'>Step 2: Gather & craft prerequisites</div>
+              <div className='opacity-80'>Materials:</div>
+              <ul className='grid gap-1 pl-4'>
+                {tier1Checklist?.materials.map((m) => (
+                  <li key={`${m.kind}:${m.defId}`}>
+                    {m.have}/{m.need} {prettyDefId(m.defId)}
+                  </li>
+                )) ?? null}
+              </ul>
+              <div className='opacity-80'>Components (Campfire recipes):</div>
+              <ul className='grid gap-1 pl-4'>
+                {tier1Checklist?.components.map((c) => (
+                  <li key={`${c.kind}:${c.defId}`}>
+                    {c.have}/{c.need} {prettyDefId(c.defId)}
+                  </li>
+                )) ?? null}
+              </ul>
+            </div>
+
+            <div>
+              <span className='font-medium'>Step 3:</span> Craft <span className='font-medium'>crude torch</span> and then press{' '}
+              <span className='font-medium'>Claim</span> in the Queue. (Owning the item isn’t enough; claiming the job is what upgrades you.)
+            </div>
+          </div>
+        </div>
+      </Activity>
+
       {!recipesRes || recipesForStation.length === 0 ? (
         <div className='rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-black/70 dark:border-white/10 dark:bg-black dark:text-white/70'>
           No recipes for this station yet.
@@ -228,7 +332,12 @@ export function CraftingPanel(props: CraftingPanelProps) {
                       </div>
                     </Activity>
                     <Activity mode={r.unlocked && r.lockReason === 'locked_tier' ? 'visible' : 'hidden'}>
-                      <div className='mt-1 text-xs text-amber-800 dark:text-amber-200'>Requires tier {r.tier}.</div>
+                      <div className='mt-1 text-xs text-amber-800 dark:text-amber-200'>
+                        Requires tier {r.tier}.
+                        {r.tier === 1 && (recipesRes?.player?.craftingTier ?? myPlayer.craftingTier) < 1
+                          ? ' Reach Tier 1 by crafting + claiming a crude torch (see Unlock Tier 1 above).'
+                          : ''}
+                      </div>
                     </Activity>
                     <div className='mt-1 text-xs opacity-60'>Max craftable now: {r.maxQty}</div>
                   </div>

@@ -39,7 +39,7 @@ function StatPill(props: Readonly<{ label: string; value: string }>) {
 
 function Card(props: Readonly<{ title: string; subtitle?: string; children: React.ReactNode }>) {
   return (
-    <section className={cx(styles.glassCard, 'rounded-2xl p-5')}>
+    <section className={cx(styles.glassCard, '')}>
       <div className='hidden _flex items-start justify-between gap-4'>
         <div className=''>
           <div className='flex items-center space-x-4'>
@@ -56,7 +56,7 @@ function Panel(props: Readonly<{ id: PanelId }>) {
   switch (props.id) {
     case 'world':
       return (
-        <div className='grid gap-4 lg:grid-cols-2'>
+        <div className='grid lg:grid-cols-2'>
           <div className='lg:col-span-2'>
             <Card title='World' subtitle='Anonymous players can join and appear in the shared world.'>
               <WorldSurface biomeId='forest' />
@@ -148,13 +148,9 @@ export function GameShell() {
     <div className='min-h-dvh bg-zinc-50 text-zinc-950 dark:bg-black dark:text-zinc-50'>
       <div className='mx-auto flex min-h-dvh w-full md:max-w-7xl lg:max-w-screen'>
         {/* Sidebar (desktop) */}
-        <aside className='hidden w-50 border-r border-zinc-700 shrink-0 flex-col lg:flex'>
+        <aside className='hidden w-12 border-r border-zinc-700 shrink-0 flex-col lg:flex'>
           <div className={cx(styles.glassCard, 'p-4')}>
             <div className='flex items-center justify-between gap-3'>
-              <div>
-                <div className='text-sm font-semibold tracking-tight'>Iluvatar</div>
-                <div className='mt-0.5 text-xs text-black/55 dark:text-white/55'>Game dashboard</div>
-              </div>
               <div className='flex items-center gap-2 text-xs text-black/55 dark:text-white/55'>
                 <IconBolt className={cx('h-4 w-4', isPending ? 'animate-pulse' : '')} />
               </div>
@@ -178,10 +174,6 @@ export function GameShell() {
                           : 'hover:bg-black/4 dark:hover:bg-white/6'
                       )}>
                       <Icon className='h-5 w-5 opacity-80' />
-                      <div className='min-w-0'>
-                        <div className='truncate text-sm font-medium'>{item.label}</div>
-                        <div className='truncate text-xs text-black/55 dark:text-white/55'>{item.description}</div>
-                      </div>
                     </button>
                   </li>
                 )
@@ -191,7 +183,7 @@ export function GameShell() {
         </aside>
 
         {/* Main */}
-        <div className='flex min-w-0 flex-1 flex-col gap-4'>
+        <div className='flex min-w-0 flex-1 flex-col'>
           {/* Top bar (mobile + desktop) */}
           <header
             className={cx(styles.glassCard, 'hidden _flex items-center justify-between gap-3 rounded-2xl p-3 sm:p-4')}>
@@ -231,8 +223,8 @@ export function GameShell() {
                 aria-label='Close menu overlay'
                 onClick={() => setMobileOpen(false)}
               />
-              <div className='absolute left-0 top-0 h-full w-[82vw] max-w-sm p-4'>
-                <div className={cx(styles.glassCard, 'h-full rounded-2xl p-2')}>
+              <div className='absolute left-0 top-0 h-full w-[82vw] max-w-sm'>
+                <div className={cx(styles.glassCard, 'h-full')}>
                   <div className='px-2 pb-2 pt-1'>
                     <div className='text-sm font-semibold tracking-tight'>Iluvatar</div>
                     <div className='mt-0.5 text-xs text-black/55 dark:text-white/55'>Navigation</div>

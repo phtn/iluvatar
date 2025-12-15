@@ -19,6 +19,9 @@ type UnlockGrant = Readonly<{
   defId: string;
 }>;
 
+const WORLD_MIN = 0;
+const WORLD_MAX = 100;
+
 export const listLootNodesByBiome = query({
   args: {
     biomeId: v.string(),
@@ -126,10 +129,73 @@ function chance(p: number): boolean {
   return Math.random() < p;
 }
 
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
 function distanceSquared(a: { x: number; y: number }, b: { x: number; y: number }): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return dx * dx + dy * dy;
+}
+
+async function seedLootNodesIfEmpty(
+  ctx: MutationCtx,
+  args: { biomeId: string; center: { x: number; y: number }; createdBy: Id<"users"> },
+): Promise<boolean> {
+  const existingAny = await ctx.db
+    .query("worldLootNodes")
+    .withIndex("by_biomeId", (q) => q.eq("biomeId", args.biomeId))
+    .first();
+  if (existingAny) return false;
+
+  const jitter = () => Math.floor(-18 + Math.random() * 37);
+  const jitterNear = () => Math.floor(-8 + Math.random() * 17);
+  const around = () => ({
+    x: clamp(args.center.x + jitter(), WORLD_MIN, WORLD_MAX),
+    y: clamp(args.center.y + jitter(), WORLD_MIN, WORLD_MAX),
+  });
+  const near = () => ({
+    x: clamp(args.center.x + jitterNear(), WORLD_MIN, WORLD_MAX),
+    y: clamp(args.center.y + jitterNear(), WORLD_MIN, WORLD_MAX),
+  });
+
+  const seeds: Array<{ lootSourceId: string; count: number }> = [
+    { lootSourceId: "fallen_branch", count: 10 },
+    { lootSourceId: "boulder", count: 6 },
+    { lootSourceId: "abandoned_crate", count: 4 },
+  ];
+  for (const seed of seeds) {
+    for (let i = 0; i < seed.count; i += 1) {
+      await ctx.db.insert("worldLootNodes", {
+        biomeId: args.biomeId,
+        lootSourceId: seed.lootSourceId,
+        position: around(),
+        depletion: { isDepleted: false },
+        createdBy: args.createdBy,
+      });
+    }
+  }
+
+  // Progression caches: keep at least one within harvest distance of the player.
+  for (let i = 0; i < 2; i += 1) {
+    await ctx.db.insert("worldLootNodes", {
+      biomeId: args.biomeId,
+      lootSourceId: "lore_cache",
+      position: near(),
+      depletion: { isDepleted: false },
+      createdBy: args.createdBy,
+    });
+  }
+  await ctx.db.insert("worldLootNodes", {
+    biomeId: args.biomeId,
+    lootSourceId: "workbench_blueprint_cache",
+    position: near(),
+    depletion: { isDepleted: false },
+    createdBy: args.createdBy,
+  });
+
+  return true;
 }
 
 function lootForSource(lootSourceId: string): readonly LootGrant[] {
@@ -363,6 +429,27 @@ export const harvestLootNode = mutation({
     });
 
     return { grants, unlocked };
+  },
+});
+
+export const ensureBiomeSeed = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+
+    const player = await ctx.db
+      .query("players")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (!player) throw new Error("Player not found");
+
+    const did = await seedLootNodesIfEmpty(ctx, {
+      biomeId: player.biomeId,
+      center: { x: player.position.x, y: player.position.y },
+      createdBy: userId,
+    });
+    return { seeded: did };
   },
 });
 

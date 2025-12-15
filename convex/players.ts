@@ -40,6 +40,7 @@ export const createPlayer = mutation({
       x: Math.floor(10 + Math.random() * 80),
       y: Math.floor(10 + Math.random() * 80),
     };
+    const clamp = (n: number) => Math.max(WORLD_MIN, Math.min(WORLD_MAX, n));
     const playerId = await ctx.db.insert("players", {
       userId,
       name: args.name,
@@ -51,7 +52,13 @@ export const createPlayer = mutation({
 
     // Starter unlocks (Phase 1). Keep at least one recipe locked so "lore cache"
     // progression has something meaningful to grant.
+    const starterStationIds = new Set<string>([
+      "campfire",
+      // Intentionally do NOT unlock:
+      // - basic_workbench (unlocked via workbench cache)
+    ]);
     for (const stationId of defaults.stationIds) {
+      if (!starterStationIds.has(stationId)) continue;
       await ctx.db.insert("playerUnlocks", {
         playerId,
         kind: "station",
@@ -74,6 +81,69 @@ export const createPlayer = mutation({
         defId: recipeId,
         unlockedTime: now,
       });
+    }
+
+    // Seed the biome with a minimal set of loot nodes (including progression caches)
+    // the first time a player is created. This keeps the core progression loop
+    // (harvest → unlock → craft → claim → tier up) playable without dev tools.
+    const biomeId = "forest";
+    const existingAny = await ctx.db
+      .query("worldLootNodes")
+      .withIndex("by_biomeId", (q) => q.eq("biomeId", biomeId))
+      .first();
+
+    if (!existingAny) {
+      const jitter = () => Math.floor(-18 + Math.random() * 37);
+      const jitterNear = () => Math.floor(-8 + Math.random() * 17);
+      const aroundSpawn = () => ({
+        x: clamp(spawn.x + jitter()),
+        y: clamp(spawn.y + jitter()),
+      });
+      const nearSpawn = () => ({
+        x: clamp(spawn.x + jitterNear()),
+        y: clamp(spawn.y + jitterNear()),
+      });
+
+      const seeds: Array<{ lootSourceId: string; count: number }> = [
+        { lootSourceId: "fallen_branch", count: 10 },
+        { lootSourceId: "boulder", count: 6 },
+        { lootSourceId: "abandoned_crate", count: 4 },
+      ];
+
+      for (const seed of seeds) {
+        for (let i = 0; i < seed.count; i += 1) {
+          const pos = aroundSpawn();
+          await ctx.db.insert("worldLootNodes", {
+            biomeId,
+            lootSourceId: seed.lootSourceId,
+            position: pos,
+            depletion: { isDepleted: false },
+            createdBy: userId,
+          });
+        }
+      }
+
+      // Progression caches: keep at least one within harvest distance of spawn.
+      for (let i = 0; i < 2; i += 1) {
+        const pos = nearSpawn();
+        await ctx.db.insert("worldLootNodes", {
+          biomeId,
+          lootSourceId: "lore_cache",
+          position: pos,
+          depletion: { isDepleted: false },
+          createdBy: userId,
+        });
+      }
+      {
+        const pos = nearSpawn();
+        await ctx.db.insert("worldLootNodes", {
+          biomeId,
+          lootSourceId: "workbench_blueprint_cache",
+          position: pos,
+          depletion: { isDepleted: false },
+          createdBy: userId,
+        });
+      }
     }
 
     return playerId;
